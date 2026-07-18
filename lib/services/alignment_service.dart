@@ -38,7 +38,8 @@ class AlignmentException implements Exception {
 
 class AlignmentService {
   static const _sampleRate = 8000;
-  static const _hopSize = 800;
+  // 50 ms gives visibly tighter music sync than the previous 100 ms grid.
+  static const _hopSize = 400;
   static const _secondsPerFrame = _hopSize / _sampleRate;
 
   Future<AlignmentResult> align({
@@ -217,15 +218,9 @@ class AlignmentService {
     List<List<double>> reference,
     List<List<double>> target,
   ) {
-    const coarseFactor = 4;
-    final coarseReference = <List<double>>[];
-    final coarseTarget = <List<double>>[];
-    for (var index = 0; index < reference.length; index += coarseFactor) {
-      coarseReference.add(reference[index]);
-    }
-    for (var index = 0; index < target.length; index += coarseFactor) {
-      coarseTarget.add(target[index]);
-    }
+    const coarseFactor = 8;
+    final coarseReference = _downsampleFeatures(reference, coarseFactor);
+    final coarseTarget = _downsampleFeatures(target, coarseFactor);
 
     final minimumCoarseOverlap = math.min(
       75,
@@ -255,7 +250,7 @@ class AlignmentService {
     final expectedLag = bestCoarseLag * coarseFactor;
     var bestLag = expectedLag;
     var bestScore = -1.0;
-    for (var lag = expectedLag - 7; lag <= expectedLag + 7; lag++) {
+    for (var lag = expectedLag - 10; lag <= expectedLag + 10; lag++) {
       final score = _correlation(reference, target, lag);
       if (score > bestScore) {
         bestScore = score;
@@ -267,6 +262,28 @@ class AlignmentService {
       score: bestScore,
       margin: bestCoarseScore - secondBest,
     );
+  }
+
+  static List<List<double>> _downsampleFeatures(
+    List<List<double>> source,
+    int factor,
+  ) {
+    final result = <List<double>>[];
+    for (var start = 0; start < source.length; start += factor) {
+      final end = math.min(source.length, start + factor);
+      final average = List<double>.filled(5, 0);
+      for (var index = start; index < end; index++) {
+        for (var band = 0; band < 5; band++) {
+          average[band] += source[index][band];
+        }
+      }
+      final count = end - start;
+      for (var band = 0; band < 5; band++) {
+        average[band] /= count;
+      }
+      result.add(average);
+    }
+    return result;
   }
 
   static double _correlation(
