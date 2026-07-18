@@ -366,7 +366,7 @@ class _EditorPageState extends State<EditorPage> {
       const ExportProgress(progress: 0, remaining: null),
     );
     setState(() => _exporting = true);
-    var dialogOpen = true;
+    var dialogShown = false;
     unawaited(
       showGeneralDialog<void>(
         context: context,
@@ -381,6 +381,7 @@ class _EditorPageState extends State<EditorPage> {
           );
         },
         pageBuilder: (context, animation, secondaryAnimation) {
+          dialogShown = true;
           return ExportProgressDialog(
             progress: progress,
             ratioLabel: aspect.label,
@@ -388,7 +389,7 @@ class _EditorPageState extends State<EditorPage> {
             onCancel: () => unawaited(_exportService.cancel()),
           );
         },
-      ).then((_) => dialogOpen = false),
+      ),
     );
 
     File? output;
@@ -425,7 +426,7 @@ class _EditorPageState extends State<EditorPage> {
       if (mounted) _showMessage('导出失败，请检查设备存储空间');
     } finally {
       if (output != null && await output.exists()) await output.delete();
-      if (mounted && dialogOpen) {
+      if (mounted && dialogShown) {
         Navigator.of(context, rootNavigator: true).pop();
       }
       if (mounted) setState(() => _exporting = false);
