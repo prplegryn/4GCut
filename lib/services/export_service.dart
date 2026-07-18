@@ -87,8 +87,8 @@ class ExportService {
         "scale=w='if(gt(a,$cellAspect),-2,$cellWidth*$zoom)':"
         "h='if(gt(a,$cellAspect),$cellHeight*$zoom,-2)',"
         "crop=$cellWidth:$cellHeight:"
-        "x='max(0,min(iw-$cellWidth,(iw-$cellWidth)/2-$x*$cellWidth/2))':"
-        "y='max(0,min(ih-$cellHeight,(ih-$cellHeight)/2-$y*$cellHeight/2))',"
+        "x='max(0,min(iw-$cellWidth,(iw-$cellWidth)/2*(1-$x)))':"
+        "y='max(0,min(ih-$cellHeight,(ih-$cellHeight)/2*(1-$y)))',"
         'setsar=1[v$index]',
       );
     }

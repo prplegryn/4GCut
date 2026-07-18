@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -26,8 +28,8 @@ class GuidePreview extends StatefulWidget {
 }
 
 class _GuidePreviewState extends State<GuidePreview> {
-  double _horizontalGuide = 0.5;
-  double _verticalGuide = 0.5;
+  double _horizontalGuide = 0;
+  double _verticalGuide = 1;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +37,9 @@ class _GuidePreviewState extends State<GuidePreview> {
       builder: (context, constraints) {
         final areaWidth = constraints.maxWidth;
         final maximumPreviewWidth = areaWidth - 92;
-        const maximumPreviewHeight = 330.0;
+        final maximumPreviewHeight = constraints.hasBoundedHeight
+            ? math.max(150.0, math.min(330.0, constraints.maxHeight - 70))
+            : 330.0;
         late final double previewWidth;
         late final double previewHeight;
         if (widget.aspectRatio > maximumPreviewWidth / maximumPreviewHeight) {
@@ -46,14 +50,19 @@ class _GuidePreviewState extends State<GuidePreview> {
           previewWidth = previewHeight * widget.aspectRatio;
         }
 
-        const previewTop = 58.0;
+        final previewTop = math.min(58.0, math.max(32.0, maximumPreviewHeight * 0.18));
         final previewLeft = (areaWidth - previewWidth) / 2;
         final previewRight = previewLeft + previewWidth;
         final previewBottom = previewTop + previewHeight;
-        final areaHeight = previewBottom + 28;
-        final horizontalY = 12 + _horizontalGuide * 30;
-        final verticalMinimum = previewRight + 15;
-        final verticalMaximum = areaWidth - 18;
+        final areaHeight = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : previewBottom + 28;
+        const horizontalMinimum = 12.0;
+        final horizontalMaximum = math.max(horizontalMinimum + 1, previewBottom - 10);
+        final horizontalY = horizontalMinimum +
+            _horizontalGuide * (horizontalMaximum - horizontalMinimum);
+        final verticalMinimum = previewLeft + 10;
+        final verticalMaximum = math.max(verticalMinimum + 1, previewRight + 18);
         final verticalRange =
             (verticalMaximum - verticalMinimum).clamp(0.0, double.infinity).toDouble();
         final verticalX = verticalMinimum + _verticalGuide * verticalRange;
@@ -65,61 +74,6 @@ class _GuidePreviewState extends State<GuidePreview> {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              Positioned(
-                left: horizontalStart,
-                top: horizontalY,
-                width: (previewRight - horizontalStart).clamp(1.0, areaWidth).toDouble(),
-                height: 2,
-                child: const CustomPaint(painter: _DottedLinePainter()),
-              ),
-              Positioned(
-                left: horizontalStart - 21,
-                top: horizontalY - 21,
-                width: 44,
-                height: 44,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onVerticalDragUpdate: widget.enabled
-                      ? (details) {
-                          setState(() {
-                            _horizontalGuide = (_horizontalGuide + details.delta.dy / 30)
-                                .clamp(0.0, 1.0)
-                                .toDouble();
-                          });
-                        }
-                      : null,
-                  child: const Center(child: _GuideHandle()),
-                ),
-              ),
-              Positioned(
-                left: verticalX,
-                top: previewTop,
-                width: 2,
-                height: previewHeight,
-                child: const CustomPaint(painter: _DottedLinePainter(vertical: true)),
-              ),
-              Positioned(
-                left: verticalX - 21,
-                top: previewBottom - 21,
-                width: 44,
-                height: 44,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onHorizontalDragUpdate: widget.enabled
-                      ? (details) {
-                          final range = (verticalMaximum - verticalMinimum)
-                              .clamp(1.0, double.infinity)
-                              .toDouble();
-                          setState(() {
-                            _verticalGuide = (_verticalGuide + details.delta.dx / range)
-                                .clamp(0.0, 1.0)
-                                .toDouble();
-                          });
-                        }
-                      : null,
-                  child: const Center(child: _GuideHandle()),
-                ),
-              ),
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 260),
                 curve: Curves.easeInOutCubic,
@@ -165,6 +119,67 @@ class _GuidePreviewState extends State<GuidePreview> {
                       ],
                     ),
                   ),
+                ),
+              ),
+              Positioned(
+                left: horizontalStart,
+                top: horizontalY,
+                width: (previewRight - horizontalStart).clamp(1.0, areaWidth).toDouble(),
+                height: 2,
+                child: const IgnorePointer(
+                  child: CustomPaint(painter: _DottedLinePainter()),
+                ),
+              ),
+              Positioned(
+                left: horizontalStart - 21,
+                top: horizontalY - 21,
+                width: 44,
+                height: 44,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onVerticalDragUpdate: widget.enabled
+                      ? (details) {
+                          setState(() {
+                            _horizontalGuide = (_horizontalGuide +
+                                    details.delta.dy /
+                                        (horizontalMaximum - horizontalMinimum))
+                                .clamp(0.0, 1.0)
+                                .toDouble();
+                          });
+                        }
+                      : null,
+                  child: const Center(child: _GuideHandle()),
+                ),
+              ),
+              Positioned(
+                left: verticalX,
+                top: previewTop,
+                width: 2,
+                height: previewHeight,
+                child: const IgnorePointer(
+                  child: CustomPaint(painter: _DottedLinePainter(vertical: true)),
+                ),
+              ),
+              Positioned(
+                left: verticalX - 21,
+                top: previewBottom - 21,
+                width: 44,
+                height: 44,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragUpdate: widget.enabled
+                      ? (details) {
+                          final range = (verticalMaximum - verticalMinimum)
+                              .clamp(1.0, double.infinity)
+                              .toDouble();
+                          setState(() {
+                            _verticalGuide = (_verticalGuide + details.delta.dx / range)
+                                .clamp(0.0, 1.0)
+                                .toDouble();
+                          });
+                        }
+                      : null,
+                  child: const Center(child: _GuideHandle()),
                 ),
               ),
             ],
@@ -281,24 +296,32 @@ class _VideoSurface extends StatelessWidget {
     final size = controller.value.size;
     return LayoutBuilder(
       builder: (context, constraints) {
+        final sourceAspect = size.width / size.height;
+        final cellAspect = constraints.maxWidth / constraints.maxHeight;
+        final baseWidth = sourceAspect > cellAspect
+            ? constraints.maxHeight * sourceAspect
+            : constraints.maxWidth;
+        final baseHeight = sourceAspect > cellAspect
+            ? constraints.maxHeight
+            : constraints.maxWidth / sourceAspect;
+        final displayWidth = baseWidth * slot.zoom / 100;
+        final displayHeight = baseHeight * slot.zoom / 100;
+        final availablePanX = math.max(0.0, (displayWidth - constraints.maxWidth) / 2);
+        final availablePanY = math.max(0.0, (displayHeight - constraints.maxHeight) / 2);
         return ClipRect(
-          child: Transform.translate(
-            offset: Offset(
-              slot.offsetX / 100 * constraints.maxWidth * 0.5,
-              slot.offsetY / 100 * constraints.maxHeight * 0.5,
-            ),
-            child: Transform.scale(
-              scale: slot.zoom / 100,
-              child: SizedBox.expand(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  clipBehavior: Clip.hardEdge,
-                  child: SizedBox(
-                    width: size.width,
-                    height: size.height,
-                    child: VideoPlayer(controller),
-                  ),
-                ),
+          child: OverflowBox(
+            alignment: Alignment.center,
+            maxWidth: double.infinity,
+            maxHeight: double.infinity,
+            child: Transform.translate(
+              offset: Offset(
+                slot.offsetX / 100 * availablePanX,
+                slot.offsetY / 100 * availablePanY,
+              ),
+              child: SizedBox(
+                width: displayWidth,
+                height: displayHeight,
+                child: VideoPlayer(controller),
               ),
             ),
           ),

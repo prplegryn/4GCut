@@ -132,12 +132,10 @@ class _EditorPageState extends State<EditorPage> {
               ),
             ),
             Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  children: [
-                    GuidePreview(
+              child: Column(
+                children: [
+                  Expanded(
+                    child: GuidePreview(
                       slots: _slots,
                       selectedIndex: _selectedIndex,
                       aspectRatio: aspect.ratio,
@@ -151,46 +149,46 @@ class _EditorPageState extends State<EditorPage> {
                       },
                       onImport: _importVideo,
                     ),
-                    SizedBox(
-                      height: 28,
-                      child: Center(child: _buildStatus()),
-                    ),
-                    const SizedBox(height: 8),
-                    AdjustmentCard(
-                      zoom: selected.zoom,
-                      offsetX: selected.offsetX,
-                      offsetY: selected.offsetY,
-                      enabled: adjustmentEnabled,
-                      animateValues: !_sliderDragging,
-                      onZoomChanged: (value) => setState(() => selected.zoom = value),
-                      onOffsetXChanged: (value) => setState(() => selected.offsetX = value),
-                      onOffsetYChanged: (value) => setState(() => selected.offsetY = value),
-                      onInteractionStart: () => setState(() => _sliderDragging = true),
-                      onInteractionEnd: () => setState(() => _sliderDragging = false),
-                    ),
-                    const SizedBox(height: 20),
-                    ActionControls(
-                      audioLabel: '音频 ${_audioIndex + 1}',
-                      ratioLabel: aspect.label,
-                      audioEnabled: _slots.any((slot) => slot.isImported) && !busy,
-                      ratioEnabled: !busy,
-                      alignEnabled: allImported && !busy,
-                      previewEnabled: _alignment != null && !busy,
-                      exportEnabled: _alignment != null && !busy,
-                      aligning: _aligning,
-                      onAudio: _cycleAudio,
-                      onRatio: () {
-                        setState(() => _aspectIndex = (_aspectIndex + 1) % aspectOptions.length);
-                      },
-                      onAlign: _runAlignment,
-                      onPreview: _startPreview,
-                      onExport: () => _startExport(aspect),
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                ),
+                  ),
+                  SizedBox(
+                    height: 28,
+                    child: Center(child: _buildStatus()),
+                  ),
+                  const SizedBox(height: 4),
+                  AdjustmentCard(
+                    zoom: selected.zoom,
+                    offsetX: selected.offsetX,
+                    offsetY: selected.offsetY,
+                    enabled: adjustmentEnabled,
+                    animateValues: !_sliderDragging,
+                    onZoomChanged: (value) => setState(() => selected.zoom = value),
+                    onOffsetXChanged: (value) => setState(() => selected.offsetX = value),
+                    onOffsetYChanged: (value) => setState(() => selected.offsetY = value),
+                    onInteractionStart: () => setState(() => _sliderDragging = true),
+                    onInteractionEnd: () => setState(() => _sliderDragging = false),
+                  ),
+                  const SizedBox(height: 10),
+                ],
               ),
             ),
+            ActionControls(
+              audioLabel: '音频 ${_audioIndex + 1}',
+              ratioLabel: aspect.label,
+              audioEnabled: _slots.any((slot) => slot.isImported) && !busy,
+              ratioEnabled: !busy,
+              alignEnabled: allImported && !busy,
+              previewEnabled: _alignment != null && !busy,
+              exportEnabled: _alignment != null && !busy,
+              aligning: _aligning,
+              onAudio: _cycleAudio,
+              onRatio: () {
+                setState(() => _aspectIndex = (_aspectIndex + 1) % aspectOptions.length);
+              },
+              onAlign: _runAlignment,
+              onPreview: _startPreview,
+              onExport: () => _startExport(aspect),
+            ),
+            const SizedBox(height: 6),
           ],
         ),
       ),
@@ -328,16 +326,6 @@ class _EditorPageState extends State<EditorPage> {
         final elapsed = referencePosition.inMilliseconds / 1000 - alignment.trimStartFor(0);
         if (elapsed >= alignment.duration) {
           _stopPlayback();
-          return;
-        }
-        if (elapsed < 0) return;
-        for (var index = 1; index < _slots.length; index++) {
-          final controller = _slots[index].controller!;
-          final targetMilliseconds =
-              ((alignment.trimStartFor(index) + elapsed) * 1000).round();
-          if ((controller.value.position.inMilliseconds - targetMilliseconds).abs() > 150) {
-            unawaited(controller.seekTo(Duration(milliseconds: targetMilliseconds)));
-          }
         }
       });
     } catch (_) {
