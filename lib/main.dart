@@ -318,7 +318,9 @@ class _EditorPageState extends State<EditorPage> {
 
   Future<void> _runAlignment() async {
     if (_aligning || _exporting || _preparingPreview ||
-        !_slots.every((slot) => slot.isImported)) return;
+        !_slots.every((slot) => slot.isImported)) {
+      return;
+    }
     _stopPlayback();
     _discardPreview();
     setState(() {
