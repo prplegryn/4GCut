@@ -98,6 +98,27 @@ class AlignmentService {
       scores.add(match.score);
     }
 
+    // A single reference match can land on a repeated chorus or a strong
+    // transient. Verify every pair before accepting the result so a plausible
+    // but wrong offset never becomes a green “已对齐” state.
+    for (var left = 1; left < 4; left++) {
+      for (var right = left + 1; right < 4; right++) {
+        onProgress(0.84, '正在交叉校验视频 ${left + 1} 与视频 ${right + 1}');
+        final pair = await Isolate.run(
+          () => _matchFingerprints(fingerprints[left], fingerprints[right]),
+        );
+        final expectedLag =
+            ((offsets[right] - offsets[left]) / _secondsPerFrame).round();
+        if (pair.score < 0.13 || pair.margin < 0.008 ||
+            (pair.lag - expectedLag).abs() > 5) {
+          throw AlignmentException(
+            '视频 ${left + 1} 与视频 ${right + 1} 的共同音乐不一致，无法安全对齐',
+          );
+        }
+        scores.add(pair.score);
+      }
+    }
+
     var commonStart = 0.0;
     var commonEnd = durations.first.inMilliseconds / 1000.0;
     for (var index = 0; index < 4; index++) {

@@ -55,19 +55,20 @@ object CrashLogStore {
         val filename = "4GCut-crash-${synchronized(fileDateFormat) { fileDateFormat.format(Date()) }}.log"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, filename)
-                put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOCUMENTS}/4GCut/logs")
-                put(MediaStore.Downloads.IS_PENDING, 1)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOCUMENTS}/4GCut/logs")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            val filesUri = MediaStore.Files.getContentUri("external")
+            val uri = context.contentResolver.insert(filesUri, values)
                 ?: return
             try {
                 context.contentResolver.openOutputStream(uri)?.use { output ->
                     FileInputStream(source).use { input -> input.copyTo(output) }
                 }
                 values.clear()
-                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 context.contentResolver.update(uri, values, null, null)
             } catch (_: Exception) {
                 context.contentResolver.delete(uri, null, null)

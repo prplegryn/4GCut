@@ -323,6 +323,12 @@ class _EditorPageState extends State<EditorPage> {
     }
     _stopPlayback();
     _discardPreview();
+    unawaited(
+      CrashLogger.recordText(
+        'alignment-start',
+        'videos=${_slots.map((slot) => File(slot.path!).uri.pathSegments.last).join(',')}',
+      ),
+    );
     setState(() {
       _aligning = true;
       _alignmentMessage = '准备分析音频';
@@ -339,10 +345,18 @@ class _EditorPageState extends State<EditorPage> {
       );
       if (!mounted) return;
       setState(() => _alignment = result);
+      unawaited(
+        CrashLogger.recordText(
+          'alignment-result',
+          'offsets=${result.offsets}; common=${result.commonStart}-${result.commonEnd}; confidence=${result.confidence}',
+        ),
+      );
       _showMessage('对齐完成，共同片段 ${_durationLabel(result.duration)}');
     } on AlignmentException catch (error) {
+      unawaited(CrashLogger.recordText('alignment-rejected', error.message));
       if (mounted) _showMessage(error.message);
     } catch (_) {
+      unawaited(CrashLogger.recordText('alignment-error', '音频分析发生未分类错误'));
       if (mounted) _showMessage('音频分析失败，请确认四段视频都包含可播放的音轨');
     } finally {
       if (mounted) {
@@ -470,6 +484,12 @@ class _EditorPageState extends State<EditorPage> {
     _stopPlayback();
     final progress = ValueNotifier<ExportProgress>(
       const ExportProgress(progress: 0, remaining: null),
+    );
+    unawaited(
+      CrashLogger.recordText(
+        'export-start',
+        'aspect=${aspect.label}; audio=${_audioIndex + 1}; duration=${alignment.duration}',
+      ),
     );
     setState(() => _exporting = true);
     var dialogShown = false;
