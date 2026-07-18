@@ -110,8 +110,11 @@ class _EditorPageState extends State<EditorPage> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final availableHeight = media.size.height - media.padding.vertical;
-    final deviceRatio = media.size.width / availableHeight;
+    final availableHeight = math.max(1.0, media.size.height - media.padding.vertical);
+    final rawDeviceRatio = media.size.width / availableHeight;
+    final deviceRatio = rawDeviceRatio.isFinite && rawDeviceRatio > 0
+        ? rawDeviceRatio
+        : 9 / 20;
     final aspectOptions = <_AspectOption>[
       _AspectOption(_fractionLabel(deviceRatio), deviceRatio),
       const _AspectOption('9:16', 9 / 16),
@@ -585,6 +588,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   static String _fractionLabel(double ratio) {
+    if (!ratio.isFinite || ratio <= 0) return '9:20';
     var bestNumerator = 1;
     var bestDenominator = 1;
     var bestError = double.infinity;
