@@ -243,7 +243,7 @@ class _EditorPageState extends State<EditorPage> {
     if (_aligning || _exporting) return;
     _stopPlayback();
     setState(() => _selectedIndex = index);
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker().pickFiles(
       type: FileType.video,
       allowMultiple: false,
       withData: false,
