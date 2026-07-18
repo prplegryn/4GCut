@@ -9,23 +9,30 @@ import 'package:video_player/video_player.dart';
 
 import 'models/video_slot_data.dart';
 import 'services/alignment_service.dart';
+import 'services/crash_logger.dart';
 import 'services/export_service.dart';
+import 'services/preview_service.dart';
 import 'widgets/action_controls.dart';
 import 'widgets/adjustment_card.dart';
 import 'widgets/export_progress_dialog.dart';
 import 'widgets/guide_preview.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Color(0xFFF7F8FA),
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Color(0xFFF7F8FA),
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
-  runApp(const FourGCutApp());
+  runZonedGuarded(() {
+    WidgetsFlutterBinding.ensureInitialized();
+    CrashLogger.install();
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFFF7F8FA),
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Color(0xFFF7F8FA),
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
+    runApp(const FourGCutApp());
+  }, (error, stack) {
+    unawaited(CrashLogger.record('zone', error, stack));
+  });
 }
 
 class FourGCutApp extends StatelessWidget {
@@ -65,6 +72,7 @@ class _EditorPageState extends State<EditorPage> {
 
   final _alignmentService = AlignmentService();
   final _exportService = ExportService();
+  final _previewService = PreviewService();
   late final List<VideoSlotData> _slots;
 
   int _selectedIndex = 0;
@@ -72,10 +80,14 @@ class _EditorPageState extends State<EditorPage> {
   int _aspectIndex = 0;
   bool _aligning = false;
   bool _exporting = false;
+  bool _preparingPreview = false;
   bool _sliderDragging = false;
   bool _isPlaying = false;
   String _alignmentMessage = '';
   AlignmentResult? _alignment;
+  VideoPlayerController? _previewController;
+  File? _previewFile;
+  String? _previewKey;
   Timer? _syncTimer;
 
   @override
@@ -87,6 +99,8 @@ class _EditorPageState extends State<EditorPage> {
   @override
   void dispose() {
     _syncTimer?.cancel();
+    unawaited(_previewController?.dispose());
+    unawaited(_previewFile?.delete());
     for (final slot in _slots) {
       unawaited(slot.dispose());
     }
@@ -108,7 +122,7 @@ class _EditorPageState extends State<EditorPage> {
     if (_aspectIndex >= aspectOptions.length) _aspectIndex = 0;
     final aspect = aspectOptions[_aspectIndex];
     final selected = _slots[_selectedIndex];
-    final busy = _aligning || _exporting;
+    final busy = _aligning || _exporting || _preparingPreview || _isPlaying;
     final allImported = _slots.every((slot) => slot.isImported);
     final adjustmentEnabled = selected.isImported && !busy;
 
@@ -140,6 +154,8 @@ class _EditorPageState extends State<EditorPage> {
                       selectedIndex: _selectedIndex,
                       aspectRatio: aspect.ratio,
                       enabled: !busy,
+                      compositeController: _previewController,
+                      showComposite: _isPlaying,
                       onSelect: (index) {
                         _stopPlayback();
                         setState(() {
@@ -161,9 +177,18 @@ class _EditorPageState extends State<EditorPage> {
                     offsetY: selected.offsetY,
                     enabled: adjustmentEnabled,
                     animateValues: !_sliderDragging,
-                    onZoomChanged: (value) => setState(() => selected.zoom = value),
-                    onOffsetXChanged: (value) => setState(() => selected.offsetX = value),
-                    onOffsetYChanged: (value) => setState(() => selected.offsetY = value),
+                    onZoomChanged: (value) {
+                      _discardPreview();
+                      setState(() => selected.zoom = value);
+                    },
+                    onOffsetXChanged: (value) {
+                      _discardPreview();
+                      setState(() => selected.offsetX = value);
+                    },
+                    onOffsetYChanged: (value) {
+                      _discardPreview();
+                      setState(() => selected.offsetY = value);
+                    },
                     onInteractionStart: () => setState(() => _sliderDragging = true),
                     onInteractionEnd: () => setState(() => _sliderDragging = false),
                   ),
@@ -182,10 +207,12 @@ class _EditorPageState extends State<EditorPage> {
               aligning: _aligning,
               onAudio: _cycleAudio,
               onRatio: () {
+                _stopPlayback();
+                _discardPreview();
                 setState(() => _aspectIndex = (_aspectIndex + 1) % aspectOptions.length);
               },
               onAlign: _runAlignment,
-              onPreview: _startPreview,
+              onPreview: () => _startPreview(aspect),
               onExport: () => _startExport(aspect),
             ),
             const SizedBox(height: 6),
@@ -196,6 +223,23 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Widget _buildStatus() {
+    if (_preparingPreview) {
+      return const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 13,
+            height: 13,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 7),
+          Text(
+            '正在生成同步预览',
+            style: TextStyle(color: Color(0xFF667085), fontSize: 12),
+          ),
+        ],
+      );
+    }
     if (_aligning) {
       return AnimatedSwitcher(
         duration: const Duration(milliseconds: 180),
@@ -238,8 +282,9 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Future<void> _importVideo(int index) async {
-    if (_aligning || _exporting) return;
+    if (_aligning || _exporting || _preparingPreview || _isPlaying) return;
     _stopPlayback();
+    _discardPreview();
     setState(() => _selectedIndex = index);
     final result = await FilePicker.pickFiles(
       type: FileType.video,
@@ -272,8 +317,10 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Future<void> _runAlignment() async {
-    if (_aligning || _exporting || !_slots.every((slot) => slot.isImported)) return;
+    if (_aligning || _exporting || _preparingPreview ||
+        !_slots.every((slot) => slot.isImported)) return;
     _stopPlayback();
+    _discardPreview();
     setState(() {
       _aligning = true;
       _alignmentMessage = '准备分析音频';
@@ -305,32 +352,67 @@ class _EditorPageState extends State<EditorPage> {
     }
   }
 
-  Future<void> _startPreview() async {
+  Future<void> _startPreview(_AspectOption aspect) async {
     final alignment = _alignment;
-    if (alignment == null || _aligning || _exporting) return;
+    if (alignment == null || _aligning || _exporting || _preparingPreview || _isPlaying) return;
     _stopPlayback();
+    final key = _previewKeyFor(aspect, alignment);
     try {
-      for (var index = 0; index < _slots.length; index++) {
-        final controller = _slots[index].controller!;
-        await controller.pause();
-        await controller.setVolume(index == _audioIndex ? 1 : 0);
-        await controller.seekTo(
-          Duration(milliseconds: (alignment.trimStartFor(index) * 1000).round()),
+      var controller = _previewController;
+      if (controller == null || !controller.value.isInitialized || _previewKey != key) {
+        if (mounted) setState(() => _preparingPreview = true);
+        final file = await _previewService.create(
+          slots: _slots
+              .map(
+                (slot) => SlotExportSettings(
+                  path: slot.path!,
+                  zoom: slot.zoom,
+                  offsetX: slot.offsetX,
+                  offsetY: slot.offsetY,
+                ),
+              )
+              .toList(growable: false),
+          alignment: alignment,
+          audioIndex: _audioIndex,
+          aspectRatio: aspect.ratio,
         );
+        await controller?.dispose();
+        final oldFile = _previewFile;
+        final nextController = VideoPlayerController.file(file);
+        await nextController.initialize();
+        await nextController.setLooping(false);
+        await nextController.setVolume(1);
+        if (!mounted) {
+          await nextController.dispose();
+          await file.delete();
+          return;
+        }
+        setState(() {
+          _previewController = nextController;
+          _previewFile = file;
+          _previewKey = key;
+          _preparingPreview = false;
+        });
+        controller = nextController;
+        if (oldFile != null && await oldFile.exists()) await oldFile.delete();
       }
-      await Future.wait(_slots.map((slot) => slot.controller!.play()));
+      await controller.seekTo(Duration.zero);
+      await controller.play();
       if (!mounted) return;
       setState(() => _isPlaying = true);
       _syncTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
-        final referencePosition = _slots.first.controller!.value.position;
-        final elapsed = referencePosition.inMilliseconds / 1000 - alignment.trimStartFor(0);
-        if (elapsed >= alignment.duration) {
-          _stopPlayback();
-        }
+        final current = controller!.value.position.inMilliseconds / 1000;
+        if (current >= alignment.duration) _stopPlayback();
       });
-    } catch (_) {
+    } catch (error, stack) {
       _stopPlayback();
-      if (mounted) _showMessage('同步预览启动失败，请重新对齐后再试');
+      _discardPreview();
+      if (mounted) {
+        setState(() => _preparingPreview = false);
+        _showMessage('同步预览生成失败，请检查视频音轨');
+      }
+      // The crash logger also records preview failures for diagnosis.
+      unawaited(CrashLogger.record('preview', error, stack));
     }
   }
 
@@ -340,19 +422,41 @@ class _EditorPageState extends State<EditorPage> {
     for (final slot in _slots) {
       if (slot.controller != null) unawaited(slot.controller!.pause());
     }
+    if (_previewController != null) unawaited(_previewController!.pause());
     if (_isPlaying && mounted) setState(() => _isPlaying = false);
+  }
+
+  void _discardPreview() {
+    final controller = _previewController;
+    final file = _previewFile;
+    _previewController = null;
+    _previewFile = null;
+    _previewKey = null;
+    unawaited(controller?.dispose());
+    unawaited(file?.delete());
+  }
+
+  String _previewKeyFor(_AspectOption aspect, AlignmentResult alignment) {
+    final values = <Object?>[
+      aspect.label,
+      _audioIndex,
+      alignment.commonStart,
+      alignment.commonEnd,
+      ...alignment.offsets,
+      for (final slot in _slots) slot.zoom,
+      for (final slot in _slots) slot.offsetX,
+      for (final slot in _slots) slot.offsetY,
+    ];
+    return values.join('|');
   }
 
   void _cycleAudio() {
     for (var step = 1; step <= 4; step++) {
       final candidate = (_audioIndex + step) % 4;
       if (_slots[candidate].isImported) {
+        _stopPlayback();
+        _discardPreview();
         setState(() => _audioIndex = candidate);
-        if (_isPlaying) {
-          for (var index = 0; index < 4; index++) {
-            unawaited(_slots[index].controller!.setVolume(index == candidate ? 1 : 0));
-          }
-        }
         return;
       }
     }
@@ -417,12 +521,16 @@ class _EditorPageState extends State<EditorPage> {
       );
       if (mounted) _showMessage('导出完成，已保存到“影片/4GCut”');
     } on ExportCanceledException catch (error) {
+      unawaited(CrashLogger.record('export-cancel', error, StackTrace.current));
       if (mounted) _showMessage(error.message);
     } on ExportException catch (error) {
+      unawaited(CrashLogger.record('export', error, StackTrace.current));
       if (mounted) _showMessage(error.message);
     } on PlatformException catch (error) {
+      unawaited(CrashLogger.record('export-platform', error, StackTrace.current));
       if (mounted) _showMessage('视频已生成，但保存失败：${error.message ?? '存储不可用'}');
-    } catch (_) {
+    } catch (error, stack) {
+      unawaited(CrashLogger.record('export-uncaught', error, stack));
       if (mounted) _showMessage('导出失败，请检查设备存储空间');
     } finally {
       if (output != null && await output.exists()) await output.delete();

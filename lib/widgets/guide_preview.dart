@@ -12,6 +12,8 @@ class GuidePreview extends StatefulWidget {
     required this.selectedIndex,
     required this.aspectRatio,
     required this.enabled,
+    required this.compositeController,
+    required this.showComposite,
     required this.onSelect,
     required this.onImport,
   });
@@ -20,6 +22,8 @@ class GuidePreview extends StatefulWidget {
   final int selectedIndex;
   final double aspectRatio;
   final bool enabled;
+  final VideoPlayerController? compositeController;
+  final bool showComposite;
   final ValueChanged<int> onSelect;
   final ValueChanged<int> onImport;
 
@@ -95,29 +99,31 @@ class _GuidePreviewState extends State<GuidePreview> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: Row(
+                    child: widget.showComposite && widget.compositeController != null
+                        ? VideoPlayer(widget.compositeController!)
+                        : Column(
                             children: [
-                              Expanded(child: _buildCell(0)),
-                              const SizedBox(width: 1.5),
-                              Expanded(child: _buildCell(1)),
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Expanded(child: _buildCell(0)),
+                                    const SizedBox(width: 1.5),
+                                    Expanded(child: _buildCell(1)),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 1.5),
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Expanded(child: _buildCell(2)),
+                                    const SizedBox(width: 1.5),
+                                    Expanded(child: _buildCell(3)),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 1.5),
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Expanded(child: _buildCell(2)),
-                              const SizedBox(width: 1.5),
-                              Expanded(child: _buildCell(3)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ),

@@ -16,22 +16,33 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
-                if (call.method != "saveVideo") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
-                }
-                val sourcePath = call.argument<String>("path")
-                val displayName = call.argument<String>("name")
-                if (sourcePath == null || displayName == null) {
-                    result.error("invalid_arguments", "缺少导出文件信息", null)
-                    return@setMethodCallHandler
-                }
-                try {
-                    result.success(saveVideo(File(sourcePath), displayName))
-                } catch (error: Exception) {
-                    result.error("save_failed", error.message ?: "保存失败", null)
+                when (call.method) {
+                    "saveVideo" -> {
+                        val sourcePath = call.argument<String>("path")
+                        val displayName = call.argument<String>("name")
+                        if (sourcePath == null || displayName == null) {
+                            result.error("invalid_arguments", "缺少导出文件信息", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            result.success(saveVideo(File(sourcePath), displayName))
+                        } catch (error: Exception) {
+                            CrashLogStore.append(this, "save-video", error.stackTraceToString(), publish = true)
+                            result.error("save_failed", error.message ?: "保存失败", null)
+                        }
+                    }
+                    "writeCrashLog" -> {
+                        val category = call.argument<String>("category") ?: "dart"
+                        val details = call.argument<String>("details") ?: "未知错误"
+                        try {
+                            result.success(CrashLogStore.append(this, category, details, publish = true))
+                        } catch (error: Exception) {
+                            result.error("log_failed", error.message ?: "日志写入失败", null)
+                        }
+                    }
+                    else -> result.notImplemented()
                 }
             }
     }
