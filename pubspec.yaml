@@ -1,0 +1,23 @@
+name: four_g_cut
+description: 4GCut four-way synchronized video editor.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffmpeg_kit_flutter_new_min_gpl: ^2.3.2
+  file_picker: ^11.0.2
+  path_provider: ^2.1.5
+  video_player: ^2.13.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
